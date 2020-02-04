@@ -16,8 +16,14 @@
 #define Y_AXIS_MOTOR_DIR_PIN 12
 #define Y_AXIS_MOTOR_ENABLE_PIN 13
 
-#define DISTANCE_PER_STEP_X (8.0F / 200.0F)
-#define DISTANCE_PER_STEP_Y 0.1F
+#define DISTANCE_PER_STEP_X (8.0F / 200.0F) //Millimeters per full rotation divided by number of steps
+#define DISTANCE_PER_STEP_Y 0.1F //TODO - Permieter of wheel divied by number of steps
+
+#define DISTANCE_X_FROM_HOMING_SENSOR 50.0F //TODO - Distance (negative) from origin (right side of sheet) to homing sensor
+#define DISTANCE_X_OFFSET_ORIGIN 20.0F //TODO - Distance from origin (right side of sheet) to end of margins
+#define DISTANCE_Y_OFFSET_ORIGIN 10.0F //TODO - Distance to scroll from the point that is detected by the sensor
+#define STEPS_X_FROM_HOMING (DISTANCE_X_FROM_HOMING_SENSOR + DISTANCE_X_OFFSET_ORIGIN) / DISTANCE_PER_STEP_X
+#define STEPS_Y_FROM_HOMING (DISTANCE_Y_OFFSET_ORIGIN) /  DISTANCE_PER_STEP_Y
 
 #define SOLENOID_TRIGGER_TIME 200
 
@@ -150,9 +156,9 @@ void moveMotorX(bool dir){
   digitalWrite(X_AXIS_MOTOR_STEP_PIN, false);
   delayMicroseconds(STEP_TIME_MICROSECONDS_X);
   if(dir == LEFT){
-    stepsX--;
-  }else{
     stepsX++;
+  }else{
+    stepsX--;
   }
 }
 
@@ -216,9 +222,9 @@ void checkForPrintRequest(){
 
       emptyData();
 
-      while(Serial.available()){
+      int line = 0;
 
-        int line = 0;
+      while(Serial.available()){
 
         String instruction = Serial.readStringUntil('\n');
         if(instruction == "BEGIN_LINE"){
@@ -231,6 +237,8 @@ void checkForPrintRequest(){
             }
             totalAmountOfPoints++;
             data[line][xPos] = POINT;
+
+            point = Serial.readStringUntil('\n');
           }
           line++;
           if(line >= NUMBER_OF_LINES){
@@ -249,15 +257,15 @@ void checkForPrintRequest(){
 }
 
 int getStepsFromPointX(int x){
-  int charOffset = (x / 2 * 6.25F) / DISTANCE_PER_STEP_X;
-  int pointOffset = x % 2 == 1 ? (2.5F) / DISTANCE_PER_STEP_X : 0;
-  return charOffset + pointOffset;
+  int charOffset = ((x - x % 2) / 2 * 6.25) / DISTANCE_PER_STEP_X;
+  int pointOffset = x % 2 == 1 ? (2.5) / DISTANCE_PER_STEP_X : 0;
+  return (int)(charOffset + pointOffset);
 }
 
 int getStepsFromPointY(int y){
-  int charOffset = (y / 3 * 10.0F) / DISTANCE_PER_STEP_Y;
-  int pointOffset = y % 3 != 0 ? (1.5F) / DISTANCE_PER_STEP_Y : 0;
-  return charOffset + pointOffset;
+    int charOffset = ((y - y % 3) / 3 * 10.0) / DISTANCE_PER_STEP_Y;
+    int pointOffset = y % 3 != 0 ? (2.5) / DISTANCE_PER_STEP_Y : 0;
+    return (int)(charOffset + pointOffset);
 }
 
 void pointPunched(){
@@ -292,23 +300,44 @@ void loop() {
   if(!emergencyStop){
     if(!isPrinting && !isStopping){
       checkForPrintRequest();
-    }else{
-      if(isHoming){
+    }
+    else
+    {
+      if (isHoming)
+      {
         //Home printer
-        if(!stepsX == 0){
-          if(!digitalRead(HOMING_SWITCH_PIN)){
-            moveMotorX(LEFT);
-          }
-        }else if(!digitalRead(PRESENCE_SENSOR_PIN) && !isStopping){ //If the printer is not doing a stopping homing, wait until paper is detected
+
+        if (!digitalRead(HOMING_SWITCH_PIN))
+        {
+          moveMotorX(RIGHT);
+        }
+        else if (!digitalRead(PRESENCE_SENSOR_PIN) && !isStopping)
+        {
+          //If the printer is not doing a stopping homing, wait until paper is detected
           moveMotorY(UP);
-        }else{
-          stepsX = 0;
-          stepsY = 0;
+        }
+        else if (!isStopping)
+        {
+          stepsX = (-STEPS_X_FROM_HOMING);
+          stepsY = (-STEPS_Y_FROM_HOMING);
           isHoming = false;
-          if(!isStopping){
-            //If was in the process of stopping, indicate that the homing has been done
-            stoppedPrint();
+        }
+        else if (isStopping)
+        {
+          //If was in the process of stopping
+          //Wait until paper is gone
+          if (digitalRead(PRESENCE_SENSOR_PIN))
+          {
+            moveMotorY(UP);
+            return;
           }
+
+          stepsX = (-STEPS_X_FROM_HOMING);
+          stepsY = (-STEPS_Y_FROM_HOMING);
+          isHoming = false;
+
+          //Indicate that the homing has been done
+          stoppedPrint();
         }
       }else{
         //The printer is printing
@@ -383,9 +412,9 @@ void loop() {
             }
             
             if(stepsX < targetStepsX){
-              moveMotorX(RIGHT);
-            }else if(stepsX > targetStepsX){
               moveMotorX(LEFT);
+            }else if(stepsX > targetStepsX){
+              moveMotorX(RIGHT);
             }
           }
         }
@@ -395,4 +424,6 @@ void loop() {
   }else{
     resetPrinter();
   }
+
+  updateCounter();
 }
