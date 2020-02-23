@@ -229,21 +229,24 @@ void checkForPrintRequest(){
         String instruction = Serial.readStringUntil('\n');
         if(instruction == "BEGIN_LINE"){
           
+          if(line >= NUMBER_OF_LINES){
+            break;
+          }
+
           String point = Serial.readStringUntil('\n');
           while(point != "STOP_LINE"){
             int xPos = point.toInt();
             if(xPos >= NUMBER_OF_COLUMNS){
-              break;
+              point = Serial.readStringUntil('\n');
+              continue;
             }
             totalAmountOfPoints++;
             data[line][xPos] = POINT;
 
             point = Serial.readStringUntil('\n');
           }
+          
           line++;
-          if(line >= NUMBER_OF_LINES){
-            break;
-          }
 
         }else if(instruction == "END_OF_PRINT"){
           startPrint();
@@ -264,7 +267,7 @@ int getStepsFromPointX(int x){
 
 int getStepsFromPointY(int y){
     int charOffset = ((y - y % 3) / 3 * 10.0) / DISTANCE_PER_STEP_Y;
-    int pointOffset = y % 3 != 0 ? (2.5) / DISTANCE_PER_STEP_Y : 0;
+    int pointOffset = ((y % 3) * 2.5) / DISTANCE_PER_STEP_Y;
     return (int)(charOffset + pointOffset);
 }
 
